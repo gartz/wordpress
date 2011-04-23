@@ -9,23 +9,23 @@
 /** WordPress Administration Bootstrap */
 require_once('./admin.php');
 
-require_once( './includes/default-list-tables.php' );
+if ( !current_user_can('switch_themes') && !current_user_can('edit_theme_options') )
+	wp_die( __( 'Cheatin&#8217; uh?' ) );
 
-$wp_list_table = new WP_Themes_Table;
-$wp_list_table->check_permissions();
+$wp_list_table = _get_list_table('WP_Themes_List_Table');
 
-if ( current_user_can('switch_themes') && isset($_GET['action']) ) {
+if ( current_user_can( 'switch_themes' ) && isset($_GET['action'] ) ) {
 	if ( 'activate' == $_GET['action'] ) {
 		check_admin_referer('switch-theme_' . $_GET['template']);
 		switch_theme($_GET['template'], $_GET['stylesheet']);
-		wp_redirect('themes.php?activated=true');
+		wp_redirect( admin_url('themes.php?activated=true') );
 		exit;
-	} else if ( 'delete' == $_GET['action'] ) {
+	} elseif ( 'delete' == $_GET['action'] ) {
 		check_admin_referer('delete-theme_' . $_GET['template']);
 		if ( !current_user_can('delete_themes') )
 			wp_die( __( 'Cheatin&#8217; uh?' ) );
 		delete_theme($_GET['template']);
-		wp_redirect('themes.php?deleted=true');
+		wp_redirect( admin_url('themes.php?deleted=true') );
 		exit;
 	}
 }
@@ -49,13 +49,12 @@ add_contextual_help($current_screen, $help);
 
 add_thickbox();
 wp_enqueue_script( 'theme-preview' );
+wp_enqueue_script( 'theme' );
+wp_enqueue_style( 'theme-install' );
 
 endif;
 
 require_once('./admin-header.php');
-if ( is_multisite() && current_user_can('edit_themes') ) {
-	?><div id="message0" class="updated"><p><?php printf( __('Administrator: new themes must be activated in the <a href="%s">Network Themes</a> screen before they appear here.'), admin_url( 'ms-themes.php') ); ?></p></div><?php
-}
 ?>
 
 <?php if ( ! validate_current_theme() ) : ?>
@@ -70,9 +69,19 @@ if ( is_multisite() && current_user_can('edit_themes') ) {
 <div id="message3" class="updated"><p><?php _e('Theme deleted.') ?></p></div>
 <?php endif; ?>
 
-<div class="wrap">
-<?php screen_icon(); ?>
-<h2><a href="themes.php" class="nav-tab nav-tab-active"><?php echo esc_html( $title ); ?></a><?php if ( current_user_can('install_themes') ) { ?><a href="theme-install.php" class="nav-tab"><?php echo esc_html_x('Install Themes', 'theme'); ?></a><?php } ?></h2>
+<div class="wrap"><?php
+screen_icon();
+if ( !is_multisite() ) : ?>
+<h2 class="nav-tab-wrapper">
+<a href="themes.php" class="nav-tab nav-tab-active"><?php echo esc_html( $title ); ?></a>
+	<?php if ( current_user_can('install_themes') ) : ?>
+<a href="<?php echo admin_url( 'theme-install.php'); ?>" class="nav-tab"><?php echo esc_html_x('Install Themes', 'theme'); ?></a>
+	<?php endif;
+else : ?>
+<h2>
+<?php echo esc_html( $title ); ?>
+<?php endif; ?>
+</h2>
 
 <h3><?php _e('Current Theme'); ?></h3>
 <div id="current-theme">
@@ -83,19 +92,46 @@ if ( is_multisite() && current_user_can('edit_themes') ) {
 	/* translators: 1: theme title, 2: theme version, 3: theme author */
 	printf(__('%1$s %2$s by %3$s'), $ct->title, $ct->version, $ct->author) ; ?></h4>
 <p class="theme-description"><?php echo $ct->description; ?></p>
-<?php if ( current_user_can('edit_themes') && $ct->parent_theme ) { ?>
-	<p><?php printf(__('The template files are located in <code>%2$s</code>. The stylesheet files are located in <code>%3$s</code>. <strong>%4$s</strong> uses templates from <strong>%5$s</strong>. Changes made to the templates will affect both themes.'), $ct->title, str_replace( WP_CONTENT_DIR, '', $ct->template_dir ), str_replace( WP_CONTENT_DIR, '', $ct->stylesheet_dir ), $ct->title, $ct->parent_theme); ?></p>
-<?php } else { ?>
-	<p><?php printf(__('All of this theme&#8217;s files are located in <code>%2$s</code>.'), $ct->title, str_replace( WP_CONTENT_DIR, '', $ct->template_dir ), str_replace( WP_CONTENT_DIR, '', $ct->stylesheet_dir ) ); ?></p>
-<?php } ?>
-<?php if ( $ct->tags ) : ?>
-<p><?php _e('Tags:'); ?> <?php echo join(', ', $ct->tags); ?></p>
-<?php endif; ?>
+<div class="theme-options">
+	<span><?php _e( 'Options:' )?></span>
+	<?php
+	// Pretend you didn't see this.
+	$options = array();
+	if ( is_array( $submenu ) && isset( $submenu['themes.php'] ) ) {
+		foreach ( (array) $submenu['themes.php'] as $item) {
+			$class = '';
+			if ( 'themes.php' == $item[2] || 'theme-editor.php' == $item[2] )
+				continue;
+			// 0 = name, 1 = capability, 2 = file
+			if ( ( strcmp($self, $item[2]) == 0 && empty($parent_file)) || ($parent_file && ($item[2] == $parent_file)) ) $class = ' class="current"';
+
+			if ( !empty($submenu[$item[2]]) ) {
+				$submenu[$item[2]] = array_values($submenu[$item[2]]);  // Re-index.
+				$menu_hook = get_plugin_page_hook($submenu[$item[2]][0][2], $item[2]);
+				if ( file_exists(ABSPATH . PLUGINDIR . "/{$submenu[$item[2]][0][2]}") || !empty($menu_hook))
+					$options[] = "<a href='admin.php?page={$submenu[$item[2]][0][2]}'$class>{$item[0]}</a>";
+				else
+					$options[] = "<a href='{$submenu[$item[2]][0][2]}'$class>{$item[0]}</a>";
+			} else if ( current_user_can($item[1]) ) {
+				if ( file_exists(ABSPATH . 'wp-admin/' . $item[2]) ) {
+					$options[] = "<a href='{$item[2]}'$class>{$item[0]}</a>";
+				} else {
+					$options[] = "<a href='themes.php?page={$item[2]}'$class>{$item[0]}</a>";
+				}
+			}
+		}
+	}
+	echo implode ( ' | ', $options );
+
+	if ( $ct->tags ) : ?>
+	<p><?php _e('Tags:'); ?> <?php echo join(', ', $ct->tags); ?></p>
+	<?php endif; ?>
+</div>
 <?php theme_update_available($ct); ?>
 
 </div>
 
-<br class="clear">
+<br class="clear" />
 <?php
 if ( ! current_user_can( 'switch_themes' ) ) {
 	echo '</div>';
@@ -103,10 +139,67 @@ if ( ! current_user_can( 'switch_themes' ) ) {
 	exit;
 }
 ?>
+
 <h3><?php _e('Available Themes'); ?></h3>
+
+<?php if ( !empty( $_REQUEST['s'] ) || !empty( $_REQUEST['filter'] ) || $wp_list_table->has_items() ) : ?>
+
+<form class="search-form filter-form" action="" method="get">
+
+<p class="search-box">
+	<label class="screen-reader-text" for="theme-search-input"><?php _e('Search Themes'); ?>:</label>
+	<input type="text" id="theme-search-input" name="s" value="<?php _admin_search_query(); ?>" />
+	<?php submit_button( __( 'Search Themes' ), 'button', 'submit', false ); ?>
+	<a id="filter-click" href="?filter=1"><?php _e( 'Feature Filter' ); ?></a>
+</p>
+
+<br class="clear"/>
+
+<div id="filter-box" style="<?php if ( empty($_REQUEST['filter']) ) echo 'display: none;'; ?>">
+<?php $feature_list = get_theme_feature_list(); ?>
+	<div class="feature-filter">
+		<p class="install-help"><?php _e('Theme filters') ?></p>
+	<?php if ( !empty( $_REQUEST['filter'] ) ) : ?>
+		<input type="hidden" name="filter" value="1" />
+	<?php endif; ?>
+	<?php foreach ( $feature_list as $feature_name => $features ) :
+			$feature_name = esc_html( $feature_name ); ?>
+
+		<div class="feature-container">
+			<div class="feature-name"><?php echo $feature_name ?></div>
+
+			<ol class="feature-group">
+				<?php foreach ( $features as $key => $feature ) :
+						$feature_name = $feature;
+						$feature_name = esc_html( $feature_name );
+						$feature = esc_attr( $feature );
+						?>
+				<li>
+					<input type="checkbox" name="features[]" id="feature-id-<?php echo $key; ?>" value="<?php echo $key; ?>" <?php checked( in_array( $key, $wp_list_table->features ) ); ?>/>
+					<label for="feature-id-<?php echo $key; ?>"><?php echo $feature_name; ?></label>
+				</li>
+				<?php endforeach; ?>
+			</ol>
+		</div>
+	<?php endforeach; ?>
+
+	<div class="feature-container">
+		<?php submit_button( __( 'Apply Filters' ), 'button-secondary submitter', 'submit', false, array( 'style' => 'margin-left: 120px' ) ); ?>
+		&nbsp;
+		<small><a id="mini-filter-click" href="<?php echo esc_url( remove_query_arg( array('filter', 'features', 'submit') ) ); ?>"><?php _e( 'Close filters' )?></a></small>
+	</div>
+	<br/>
+	</div>
+	<br class="clear"/>
+</div>
+
+<br class="clear" />
+
+<?php endif; ?>
 
 <?php $wp_list_table->display(); ?>
 
+</form>
 <br class="clear" />
 
 <?php
@@ -115,7 +208,7 @@ $broken_themes = get_broken_themes();
 if ( current_user_can('edit_themes') && count( $broken_themes ) ) {
 ?>
 
-<h2><?php _e('Broken Themes'); ?> <?php if ( is_multisite() ) _e( '(Site admin only)' ); ?></h2>
+<h3><?php _e('Broken Themes'); ?></h3>
 <p><?php _e('The following themes are installed but incomplete. Themes must have a stylesheet and a template.'); ?></p>
 
 <table id="broken-themes">

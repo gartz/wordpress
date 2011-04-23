@@ -6,18 +6,33 @@
  * @subpackage Administration
  */
 
+if ( !defined( 'IFRAME_REQUEST' ) && isset( $_GET['tab'] ) && ( 'theme-information' == $_GET['tab'] ) )
+	define( 'IFRAME_REQUEST', true );
+
 /** WordPress Administration Bootstrap */
 require_once('./admin.php');
 
-require_once( './includes/default-list-tables.php' );
+if ( ! current_user_can('install_themes') )
+	wp_die( __( 'You do not have sufficient permissions to install themes on this site.' ) );
 
-$wp_list_table = new WP_Theme_Install_Table;
-$wp_list_table->check_permissions();
+if ( is_multisite() && ! is_network_admin() ) {
+	wp_redirect( network_admin_url( 'theme-install.php' ) );
+	exit();
+}
+
+$wp_list_table = _get_list_table('WP_Theme_Install_List_Table');
+$pagenum = $wp_list_table->get_pagenum();
 $wp_list_table->prepare_items();
+$total_pages = $wp_list_table->get_pagination_arg( 'total_pages' );
+if ( $pagenum > $total_pages && $total_pages > 0 ) {
+	wp_redirect( add_query_arg( 'paged', $total_pages ) );
+	exit;
+}
 
 $title = __('Install Themes');
 $parent_file = 'themes.php';
-$submenu_file = 'themes.php';
+if ( !is_network_admin() )
+	$submenu_file = 'themes.php';
 
 wp_enqueue_style( 'theme-install' );
 wp_enqueue_script( 'theme-install' );
@@ -37,26 +52,25 @@ $help .= '<p>' . __('<a href="http://codex.wordpress.org/Using_Themes#Adding_New
 $help .= '<p>' . __('<a href="http://wordpress.org/support/" target="_blank">Support Forums</a>') . '</p>';
 add_contextual_help($current_screen, $help);
 
-include('./admin-header.php');
+include(ABSPATH . 'wp-admin/admin-header.php');
 ?>
 <div class="wrap">
-<?php screen_icon(); ?>
-<h2><a href="themes.php" class="nav-tab"><?php echo esc_html_x('Manage Themes', 'theme'); ?></a><a href="theme-install.php" class="nav-tab nav-tab-active"><?php echo esc_html( $title ); ?></a></h2>
-
-	<ul class="subsubsub">
 <?php
-$display_tabs = array();
-foreach ( (array) $tabs as $action => $text ) {
-	$sep = ( end($tabs) != $text ) ? ' | ' : '';
-	$class = ( $action == $tab ) ? ' class="current"' : '';
-	$href = admin_url('theme-install.php?tab='. $action);
-	echo "\t\t<li><a href='$href'$class>$text</a>$sep</li>\n";
-}
-?>
-	</ul>
-	<br class="clear" />
-	<?php do_action('install_themes_' . $tab, $paged); ?>
+screen_icon();
+
+if ( is_network_admin() ) : ?>
+<h2><?php echo esc_html( $title ); ?></h2>
+<?php else : ?>
+<h2 class="nav-tab-wrapper"><a href="themes.php" class="nav-tab"><?php echo esc_html_x('Manage Themes', 'theme'); ?></a><a href="theme-install.php" class="nav-tab nav-tab-active"><?php echo esc_html( $title ); ?></a></h2>
+
+<?php
+endif;
+
+$wp_list_table->views(); ?>
+
+<br class="clear" />
+<?php do_action('install_themes_' . $tab, $paged); ?>
 </div>
 <?php
-include('./admin-footer.php');
+include(ABSPATH . 'wp-admin/admin-footer.php');
 

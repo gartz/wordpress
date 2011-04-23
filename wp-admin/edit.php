@@ -9,36 +9,68 @@
 /** WordPress Administration Bootstrap */
 require_once( './admin.php' );
 
-require_once( './includes/default-list-tables.php' );
+if ( !isset($_GET['post_type']) )
+	$post_type = 'post';
+elseif ( in_array( $_GET['post_type'], get_post_types( array('show_ui' => true ) ) ) )
+	$post_type = $_GET['post_type'];
+else
+	wp_die( __('Invalid post type') );
 
-$wp_list_table = new WP_Posts_Table;
-$wp_list_table->check_permissions();
+$_GET['post_type'] = $post_type;
+
+$post_type_object = get_post_type_object( $post_type );
+
+if ( !current_user_can($post_type_object->cap->edit_posts) )
+	wp_die(__('Cheatin&#8217; uh?'));
+
+$wp_list_table = _get_list_table('WP_Posts_List_Table');
+$pagenum = $wp_list_table->get_pagenum();
 
 // Back-compat for viewing comments of an entry
-if ( $_redirect = intval( max( @$_REQUEST['p'], @$_REQUEST['attachment_id'], @$_REQUEST['page_id'] ) ) ) {
-	wp_redirect( admin_url('edit-comments.php?p=' . $_redirect ) );
-	exit;
+foreach ( array( 'p', 'attachment_id', 'page_id' ) as $_redirect ) {
+	if ( ! empty( $_REQUEST[ $_redirect ] ) ) {
+		wp_redirect( admin_url( 'edit-comments.php?p=' . absint( $_REQUEST[ $_redirect ] ) ) );
+		exit;
+	}
+}
+unset( $_redirect );
+
+if ( 'post' != $post_type ) {
+	$parent_file = "edit.php?post_type=$post_type";
+	$submenu_file = "edit.php?post_type=$post_type";
+	$post_new_file = "post-new.php?post_type=$post_type";
 } else {
-	unset( $_redirect );
+	$parent_file = 'edit.php';
+	$submenu_file = 'edit.php';
+	$post_new_file = 'post-new.php';
 }
 
-// Handle bulk actions
-if ( isset($_REQUEST['doaction']) || isset($_REQUEST['doaction2']) || isset($_REQUEST['delete_all']) || isset($_REQUEST['delete_all2']) || isset($_REQUEST['bulk_edit']) ) {
-	check_admin_referer('bulk-posts');
-	$sendback = remove_query_arg( array('trashed', 'untrashed', 'deleted', 'ids'), wp_get_referer() );
+$doaction = $wp_list_table->current_action();
 
+if ( $doaction ) {
+	check_admin_referer('bulk-posts');
+
+	$sendback = remove_query_arg( array('trashed', 'untrashed', 'deleted', 'ids'), wp_get_referer() );
+	$sendback = add_query_arg( 'paged', $pagenum, $sendback );
 	if ( strpos($sendback, 'post.php') !== false )
 		$sendback = admin_url($post_new_file);
 
-	if ( isset($_REQUEST['delete_all']) || isset($_REQUEST['delete_all2']) ) {
+	if ( 'delete_all' == $doaction ) {
 		$post_status = preg_replace('/[^a-z0-9_-]+/i', '', $_REQUEST['post_status']);
-		$post_ids = $wpdb->get_col( $wpdb->prepare( "SELECT ID FROM $wpdb->posts WHERE post_type=%s AND post_status = %s", $post_type, $post_status ) );
+		if ( get_post_status_object($post_status) ) // Check the post status exists first
+			$post_ids = $wpdb->get_col( $wpdb->prepare( "SELECT ID FROM $wpdb->posts WHERE post_type=%s AND post_status = %s", $post_type, $post_status ) );
 		$doaction = 'delete';
-	} elseif ( ( $_REQUEST['action'] != -1 || $_REQUEST['action2'] != -1 ) && ( isset($_REQUEST['post']) || isset($_REQUEST['ids']) ) ) {
-		$post_ids = isset($_REQUEST['post']) ? array_map( 'intval', (array) $_REQUEST['post'] ) : explode(',', $_REQUEST['ids']);
-		$doaction = ($_REQUEST['action'] != -1) ? $_REQUEST['action'] : $_REQUEST['action2'];
-	} else {
-		wp_redirect( admin_url("edit.php?post_type=$post_type") );
+	} elseif ( isset( $_REQUEST['media'] ) ) {
+		$post_ids = $_REQUEST['media'];
+	} elseif ( isset( $_REQUEST['ids'] ) ) {
+		$post_ids = explode( ',', $_REQUEST['ids'] );
+	} elseif ( !empty( $_REQUEST['post'] ) ) {
+		$post_ids = array_map('intval', $_REQUEST['post']);
+	}
+
+	if ( !isset( $post_ids ) ) {
+		wp_redirect( $sendback );
+		exit;
 	}
 
 	switch ( $doaction ) {
@@ -53,7 +85,7 @@ if ( isset($_REQUEST['doaction']) || isset($_REQUEST['doaction2']) || isset($_RE
 
 				$trashed++;
 			}
-			$sendback = add_query_arg( array('trashed' => $trashed, 'ids' => join(',', $post_ids)), $sendback );
+			$sendback = add_query_arg( array('trashed' => $trashed, 'ids' => join(',', $post_ids) ), $sendback );
 			break;
 		case 'untrash':
 			$untrashed = 0;
@@ -99,8 +131,7 @@ if ( isset($_REQUEST['doaction']) || isset($_REQUEST['doaction2']) || isset($_RE
 			break;
 	}
 
-	if ( isset($_REQUEST['action']) )
-		$sendback = remove_query_arg( array('action', 'action2', 'tags_input', 'post_author', 'comment_status', 'ping_status', '_status',  'post', 'bulk_edit', 'post_view'), $sendback );
+	$sendback = remove_query_arg( array('action', 'action2', 'tags_input', 'post_author', 'comment_status', 'ping_status', '_status',  'post', 'bulk_edit', 'post_view'), $sendback );
 
 	wp_redirect($sendback);
 	exit();
@@ -109,17 +140,13 @@ if ( isset($_REQUEST['doaction']) || isset($_REQUEST['doaction2']) || isset($_RE
 	 exit;
 }
 
-if ( 'post' != $post_type ) {
-	$parent_file = "edit.php?post_type=$post_type";
-	$submenu_file = "edit.php?post_type=$post_type";
-	$post_new_file = "post-new.php?post_type=$post_type";
-} else {
-	$parent_file = 'edit.php';
-	$submenu_file = 'edit.php';
-	$post_new_file = 'post-new.php';
-}
-
 $wp_list_table->prepare_items();
+
+$total_pages = $wp_list_table->get_pagination_arg( 'total_pages' );
+if ( $pagenum > $total_pages && $total_pages > 0 ) {
+	wp_redirect( add_query_arg( 'paged', $total_pages ) );
+	exit;
+}
 
 wp_enqueue_script('inline-edit-post');
 
@@ -143,7 +170,7 @@ if ( 'post' == $post_type ) {
 	'</ul>' .
 	'<p>' . __('You can also edit multiple posts at once. Select the posts you want to edit using the checkboxes, select Edit from the Bulk Actions menu and click Apply. You will be able to change the metadata (categories, author, etc.) for all selected posts at once. To remove a post from the grouping, just click the x next to its name in the Bulk Edit area that appears.') . '</p>' .
 	'<p><strong>' . __('For more information:') . '</strong></p>' .
-	'<p>' . __('<a href="http://codex.wordpress.org/Posts_Edit_SubPanel" target="_blank">Edit Posts Documentation</a>') . '</p>' .
+	'<p>' . __('<a href="http://codex.wordpress.org/Posts_Posts_SubPanel" target="_blank">Documentation on Managing Posts</a>') . '</p>' .
 	'<p>' . __('<a href="http://wordpress.org/support/" target="_blank">Support Forums</a>') . '</p>'
 	);
 } elseif ( 'page' == $post_type ) {
@@ -152,10 +179,12 @@ if ( 'post' == $post_type ) {
 	'<p>' . __('Managing Pages is very similar to managing Posts, and the screens can be customized in the same way.') . '</p>' .
 	'<p>' . __('You can also perform the same types of actions, including narrowing the list by using the filters, acting on a Page using the action links that appear when you hover over a row, or using the Bulk Actions menu to edit the metadata for multiple Pages at once.') . '</p>' .
 	'<p><strong>' . __('For more information:') . '</strong></p>' .
-	'<p>' . __('<a href="http://codex.wordpress.org/Pages_Edit_SubPanel" target="_blank">Page Management Documentation</a>') . '</p>' .
+	'<p>' . __('<a href="http://codex.wordpress.org/Pages_Pages_SubPanel" target="_blank">Documentation on Managing Pages</a>') . '</p>' .
 	'<p>' . __('<a href="http://wordpress.org/support/" target="_blank">Support Forums</a>') . '</p>'
 	);
 }
+
+add_screen_option( 'per_page', array('label' => $title, 'default' => 20) );
 
 require_once('./admin-header.php');
 ?>
@@ -209,82 +238,26 @@ $_SERVER['REQUEST_URI'] = remove_query_arg( array('locked', 'skipped', 'updated'
 </p></div>
 <?php } ?>
 
+<?php $wp_list_table->views(); ?>
+
 <form id="posts-filter" action="" method="get">
 
-<ul class="subsubsub">
-<?php
-if ( empty($locked_post_status) ) :
-$status_links = array();
-$num_posts = wp_count_posts( $post_type, 'readable' );
-$class = '';
-$allposts = '';
-
-$user_posts = false;
-if ( !current_user_can( $post_type_object->cap->edit_others_posts ) ) {
-	$user_posts = true;
-
-	$user_posts_count = $wpdb->get_var( $wpdb->prepare( "
-		SELECT COUNT( 1 ) FROM $wpdb->posts
-		WHERE post_type = '%s' AND post_status NOT IN ( 'trash', 'auto-draft' )
-		AND post_author = %d
-	", $post_type, get_current_user_id() ) );
-
-	if ( $user_posts_count && empty( $_REQUEST['post_status'] ) && empty( $_REQUEST['all_posts'] ) && empty( $_REQUEST['author'] ) )
-		$_REQUEST['author'] = get_current_user_id();
-}
-
-if ( $user_posts ) {
-	if ( isset( $_REQUEST['author'] ) && ( $_REQUEST['author'] == $current_user->ID ) )
-		$class = ' class="current"';
-	$status_links[] = "<li><a href='edit.php?post_type=$post_type&author=$current_user->ID'$class>" . sprintf( _nx( 'Mine <span class="count">(%s)</span>', 'Mine <span class="count">(%s)</span>', $user_posts_count, 'posts' ), number_format_i18n( $user_posts_count ) ) . '</a>';
-	$allposts = '&all_posts=1';
-}
-
-$total_posts = array_sum( (array) $num_posts );
-
-// Subtract post types that are not included in the admin all list.
-foreach ( get_post_stati( array('show_in_admin_all_list' => false) ) as $state )
-	$total_posts -= $num_posts->$state;
-
-$class = empty($class) && empty($_REQUEST['post_status']) ? ' class="current"' : '';
-$status_links[] = "<li><a href='edit.php?post_type=$post_type{$allposts}'$class>" . sprintf( _nx( 'All <span class="count">(%s)</span>', 'All <span class="count">(%s)</span>', $total_posts, 'posts' ), number_format_i18n( $total_posts ) ) . '</a>';
-
-foreach ( get_post_stati(array('show_in_admin_status_list' => true), 'objects') as $status ) {
-	$class = '';
-
-	$status_name = $status->name;
-
-	if ( !in_array( $status_name, $avail_post_stati ) )
-		continue;
-
-	if ( empty( $num_posts->$status_name ) )
-		continue;
-
-	if ( isset($_REQUEST['post_status']) && $status_name == $_REQUEST['post_status'] )
-		$class = ' class="current"';
-
-	$status_links[] = "<li><a href='edit.php?post_status=$status_name&amp;post_type=$post_type'$class>" . sprintf( _n( $status->label_count[0], $status->label_count[1], $num_posts->$status_name ), number_format_i18n( $num_posts->$status_name ) ) . '</a>';
-}
-echo implode( " |</li>\n", $status_links ) . '</li>';
-unset( $status_links );
-endif;
-?>
-</ul>
-
-<p class="search-box">
-	<label class="screen-reader-text" for="post-search-input"><?php echo $post_type_object->labels->search_items; ?>:</label>
-	<input type="text" id="post-search-input" name="s" value="<?php the_search_query(); ?>" />
-	<input type="submit" value="<?php echo esc_attr( $post_type_object->labels->search_items  ); ?>" class="button" />
-</p>
+<?php $wp_list_table->search_box( $post_type_object->labels->search_items, 'post' ); ?>
 
 <input type="hidden" name="post_status" class="post_status_page" value="<?php echo !empty($_REQUEST['post_status']) ? esc_attr($_REQUEST['post_status']) : 'all'; ?>" />
 <input type="hidden" name="post_type" class="post_type_page" value="<?php echo $post_type; ?>" />
+<?php if ( ! empty( $_REQUEST['show_sticky'] ) ) { ?>
+<input type="hidden" name="show_sticky" value="1" />
+<?php } ?>
 
 <?php $wp_list_table->display(); ?>
 
 </form>
 
-<?php $wp_list_table->inline_edit(); ?>
+<?php
+if ( $wp_list_table->has_items() )
+	$wp_list_table->inline_edit();
+?>
 
 <div id="ajax-response"></div>
 <br class="clear" />

@@ -425,6 +425,10 @@ ol.ol-decimal > li {
 	font-size: 11px;
 }
 
+.widefat .no-items td {
+	border-bottom-width: 0;
+}
+
 .widefat td {
 	padding: 3px 7px;
 	vertical-align: top;
@@ -474,8 +478,8 @@ ol.ol-decimal > li {
 	margin: 0 15px 0 5px;
 }
 
-.updated,
-.error {
+div.updated,
+div.error {
 	border-width: 1px;
 	border-style: solid;
 	padding: 0 0.6em;
@@ -486,15 +490,14 @@ ol.ol-decimal > li {
 	border-radius: 3px;
 }
 
-.updated p,
-.error p {
+div.updated p,
+div.error p {
 	margin: 0.5em 0;
-	line-height: 1;
 	padding: 2px;
 }
 
-.wrap .updated,
-.wrap .error {
+.wrap div.updated,
+.wrap div.error {
 	margin: 5px 0 15px;
 }
 

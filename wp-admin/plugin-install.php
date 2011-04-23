@@ -5,15 +5,29 @@
  * @package WordPress
  * @subpackage Administration
  */
+// TODO route this pages via a specific iframe handler instead of the do_action below
+if ( !defined( 'IFRAME_REQUEST' ) && isset( $_GET['tab'] ) && ( 'plugin-information' == $_GET['tab'] ) )
+	define( 'IFRAME_REQUEST', true );
 
 /** WordPress Administration Bootstrap */
 require_once('./admin.php');
 
-require_once( './includes/default-list-tables.php' );
+if ( ! current_user_can('install_plugins') )
+	wp_die(__('You do not have sufficient permissions to install plugins on this site.'));
 
-$wp_list_table = new WP_Plugin_Install_Table;
-$wp_list_table->check_permissions();
+if ( is_multisite() && ! is_network_admin() ) {
+	wp_redirect( network_admin_url( 'plugin-install.php' ) );
+	exit();
+}
+
+$wp_list_table = _get_list_table('WP_Plugin_Install_List_Table');
+$pagenum = $wp_list_table->get_pagenum();
 $wp_list_table->prepare_items();
+$total_pages = $wp_list_table->get_pagination_arg( 'total_pages' );
+if ( $pagenum > $total_pages && $total_pages > 0 ) {
+	wp_redirect( add_query_arg( 'paged', $total_pages ) );
+	exit;
+}
 
 $title = __('Install Plugins');
 $parent_file = 'plugins.php';
@@ -37,25 +51,17 @@ add_contextual_help($current_screen,
 	'<p>' . __('<a href="http://wordpress.org/support/" target="_blank">Support Forums</a>') . '</p>'
 );
 
-include('./admin-header.php');
+include(ABSPATH . 'wp-admin/admin-header.php');
 ?>
 <div class="wrap">
 <?php screen_icon(); ?>
 <h2><?php echo esc_html( $title ); ?></h2>
 
-	<ul class="subsubsub">
-<?php
-$display_tabs = array();
-foreach ( (array) $tabs as $action => $text ) {
-	$sep = ( end($tabs) != $text ) ? ' | ' : '';
-	$class = ( $action == $tab ) ? ' class="current"' : '';
-	$href = admin_url('plugin-install.php?tab=' . $action);
-	echo "\t\t<li><a href='$href'$class>$text</a>$sep</li>\n";
-}
-?>
-	</ul>
-	<br class="clear" />
-	<?php do_action('install_plugins_' . $tab, $paged); ?>
+<?php $wp_list_table->views(); ?>
+
+<br class="clear" />
+<?php do_action('install_plugins_' . $tab, $paged); ?>
 </div>
 <?php
-include('./admin-footer.php');
+include(ABSPATH . 'wp-admin/admin-footer.php');
+

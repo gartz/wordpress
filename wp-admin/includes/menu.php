@@ -9,6 +9,8 @@
 
 if ( is_network_admin() )
 	do_action('_network_admin_menu');
+elseif ( is_user_admin() )
+	do_action('_user_admin_menu');
 else
 	do_action('_admin_menu');
 
@@ -89,6 +91,8 @@ unset($id, $data, $subs, $first_sub, $old_parent, $new_parent);
 
 if ( is_network_admin() )
 	do_action('network_admin_menu', '');
+elseif ( is_user_admin() )
+	do_action('user_admin_menu', '');
 else
 	do_action('admin_menu', '');
 
@@ -201,11 +205,11 @@ if ( apply_filters('custom_menu_order', false) ) {
 	unset($menu_order, $default_menu_order);
 }
 
-$menu = add_menu_classes($menu);
-
 if ( !user_can_access_admin_page() ) {
 	do_action('admin_page_access_denied');
 	wp_die( __('You do not have sufficient permissions to access this page.') );
 }
+
+$menu = add_menu_classes($menu);
 
 ?>

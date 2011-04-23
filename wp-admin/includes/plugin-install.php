@@ -101,7 +101,7 @@ function install_dashboard() {
 		$tags = array();
 		foreach ( (array)$api_tags as $tag )
 			$tags[ $tag['name'] ] = (object) array(
-									'link' => esc_url( admin_url('plugin-install.php?tab=search&type=tag&s=' . urlencode($tag['name'])) ),
+									'link' => esc_url( self_admin_url('plugin-install.php?tab=search&type=tag&s=' . urlencode($tag['name'])) ),
 									'name' => $tag['name'],
 									'id' => sanitize_title_with_dashes($tag['name']),
 									'count' => $tag['count'] );
@@ -129,7 +129,7 @@ function install_search_form(){
 		</select>
 		<input type="text" name="s" value="<?php echo esc_attr($term) ?>" />
 		<label class="screen-reader-text" for="plugin-search-input"><?php _e('Search Plugins'); ?></label>
-		<input type="submit" id="plugin-search-input" value="<?php esc_attr_e('Search Plugins'); ?>" class="button" />
+		<?php submit_button( __( 'Search Plugins' ), 'button', 'plugin-search-input', false ); ?>
 	</form><?php
 }
 
@@ -143,7 +143,7 @@ function install_plugins_upload( $page = 1 ) {
 ?>
 	<h4><?php _e('Install a plugin in .zip format') ?></h4>
 	<p class="install-help"><?php _e('If you have a plugin in a .zip format, you may install it by uploading it here.') ?></p>
-	<form method="post" enctype="multipart/form-data" action="<?php echo admin_url('update.php?action=upload-plugin') ?>">
+	<form method="post" enctype="multipart/form-data" action="<?php echo self_admin_url('update.php?action=upload-plugin') ?>">
 		<?php wp_nonce_field( 'plugin-upload') ?>
 		<label class="screen-reader-text" for="pluginzip"><?php _e('Plugin zip file'); ?></label>
 		<input type="file" id="pluginzip" name="pluginzip" />
@@ -157,9 +157,6 @@ add_action('install_plugins_upload', 'install_plugins_upload', 10, 1);
  * Display plugin content based on plugin list.
  *
  * @since 2.7.0
- *
- * @param array $plugins List of plugins.
- * @param int $total_plugins Number of plugins.
  */
 function display_plugins_table() {
 	global $wp_list_table;
@@ -195,7 +192,7 @@ function install_plugin_install_status($api, $loop = false) {
 				$update_file = $file;
 				$version = $plugin->new_version;
 				if ( current_user_can('update_plugins') )
-					$url = wp_nonce_url(admin_url('update.php?action=upgrade-plugin&plugin=' . $update_file), 'upgrade-plugin_' . $update_file);
+					$url = wp_nonce_url(self_admin_url('update.php?action=upgrade-plugin&plugin=' . $update_file), 'upgrade-plugin_' . $update_file);
 				break;
 			}
 		}
@@ -206,7 +203,7 @@ function install_plugin_install_status($api, $loop = false) {
 			$installed_plugin = get_plugins('/' . $api->slug);
 			if ( empty($installed_plugin) ) {
 				if ( current_user_can('install_plugins') )
-					$url = wp_nonce_url(admin_url('update.php?action=install-plugin&plugin=' . $api->slug), 'install-plugin_' . $api->slug);
+					$url = wp_nonce_url(self_admin_url('update.php?action=install-plugin&plugin=' . $api->slug), 'install-plugin_' . $api->slug);
 			} else {
 				$key = array_shift( $key = array_keys($installed_plugin) ); //Use the first plugin regardless of the name, Could have issues for multiple-plugins in one directory if they share different version numbers
 				if ( version_compare($api->version, $installed_plugin[ $key ]['Version'], '=') ){
@@ -226,7 +223,7 @@ function install_plugin_install_status($api, $loop = false) {
 		} else {
 			// "install" & no directory with that slug
 			if ( current_user_can('install_plugins') )
-				$url = wp_nonce_url(admin_url('update.php?action=install-plugin&plugin=' . $api->slug), 'install-plugin_' . $api->slug);
+				$url = wp_nonce_url(self_admin_url('update.php?action=install-plugin&plugin=' . $api->slug), 'install-plugin_' . $api->slug);
 		}
 	}
 	if ( isset($_GET['from']) )

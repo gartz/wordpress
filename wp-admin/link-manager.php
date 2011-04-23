@@ -8,17 +8,16 @@
 
 /** Load WordPress Administration Bootstrap */
 require_once ('admin.php');
+if ( ! current_user_can( 'manage_links' ) )
+	wp_die( __( 'You do not have sufficient permissions to edit the links for this site.' ) );
 
-require_once( './includes/default-list-tables.php' );
-
-$wp_list_table = new WP_Links_Table;
-$wp_list_table->check_permissions();
+$wp_list_table = _get_list_table('WP_Links_List_Table');
 
 // Handle bulk deletes
-if ( isset( $_REQUEST['action'] ) && isset( $_REQUEST['linkcheck'] ) ) {
-	check_admin_referer( 'bulk-bookmarks' );
+$doaction = $wp_list_table->current_action();
 
-	$doaction = $_REQUEST['action'] ? $_REQUEST['action'] : $_REQUEST['action2'];
+if ( $doaction && isset( $_REQUEST['linkcheck'] ) ) {
+	check_admin_referer( 'bulk-bookmarks' );
 
 	if ( 'delete' == $doaction ) {
 		$bulklinks = (array) $_REQUEST['linkcheck'];
@@ -29,8 +28,9 @@ if ( isset( $_REQUEST['action'] ) && isset( $_REQUEST['linkcheck'] ) ) {
 		}
 
 		wp_redirect( add_query_arg('deleted', count( $bulklinks ), admin_url( 'link-manager.php' ) ) );
+		exit;
 	}
-} elseif ( ! empty( $_REQUEST['_wp_http_referer'] ) ) {
+} elseif ( ! empty( $_GET['_wp_http_referer'] ) ) {
 	 wp_redirect( remove_query_arg( array( '_wp_http_referer', '_wpnonce' ), stripslashes( $_SERVER['REQUEST_URI'] ) ) );
 	 exit;
 }
@@ -46,7 +46,7 @@ add_contextual_help( $current_screen,
     '<p>' . __('You can customize the display of this screen using the Screen Options tab and/or the dropdown filters above the links table.') . '</p>' .
     '<p>' . __('If you delete a link, it will be removed permanently, as Links do not have a Trash function yet.') . '</p>' .
 	'<p><strong>' . __('For more information:') . '</strong></p>' .
-	'<p>' . __('<a href="http://codex.wordpress.org/Links_Edit_SubPanel" target="_blank">Link Management Documentation</a>') . '</p>' .
+	'<p>' . __('<a href="http://codex.wordpress.org/Links_Links_SubPanel" target="_blank">Documentation on Managing Links</a>') . '</p>' .
 	'<p>' . __('<a href="http://wordpress.org/support/" target="_blank">Support Forums</a>') . '</p>'
 );
 
@@ -74,17 +74,12 @@ if ( isset($_REQUEST['deleted']) ) {
 }
 ?>
 
-<form class="search-form" action="" method="get">
-<p class="search-box">
-	<label class="screen-reader-text" for="link-search-input"><?php _e( 'Search Links' ); ?>:</label>
-	<input type="text" id="link-search-input" name="s" value="<?php _admin_search_query(); ?>" />
-	<input type="submit" value="<?php esc_attr_e( 'Search Links' ); ?>" class="button" />
-</p>
-</form>
-<br class="clear" />
+<form id="posts-filter" action="" method="get">
 
-<form id="posts-filter" action="" method="post">
+<?php $wp_list_table->search_box( __( 'Search Links' ), 'link' ); ?>
+
 <?php $wp_list_table->display(); ?>
+
 <div id="ajax-response"></div>
 </form>
 

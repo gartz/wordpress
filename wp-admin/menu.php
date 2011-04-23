@@ -22,44 +22,43 @@
  * @var array
  */
 
-$awaiting_mod = wp_count_comments();
-$awaiting_mod = $awaiting_mod->moderated;
-
 $menu[2] = array( __('Dashboard'), 'read', 'index.php', '', 'menu-top menu-top-first menu-icon-dashboard', 'menu-dashboard', 'div' );
 
-if ( is_multisite() || is_super_admin() ) {
-	$submenu[ 'index.php' ][0] = array( __('Dashboard'), 'read', 'index.php' );
+$submenu[ 'index.php' ][0] = array( __('Dashboard'), 'read', 'index.php' );
 
-	if ( is_multisite() )
-		$submenu[ 'index.php' ][5] = array( __('My Sites'), 'read', 'my-sites.php' );
-
-	if ( is_super_admin() ) {
-		$plugin_update_count = $theme_update_count = $wordpress_update_count = 0;
-		$update_plugins = get_site_transient( 'update_plugins' );
-		if ( !empty($update_plugins->response) )
-			$plugin_update_count = count( $update_plugins->response );
-		$update_themes = get_site_transient( 'update_themes' );
-		if ( !empty($update_themes->response) )
-			$theme_update_count = count( $update_themes->response );
-		$update_wordpress = get_core_updates( array('dismissed' => false) );
-		if ( !empty($update_wordpress) && !in_array( $update_wordpress[0]->response, array('development', 'latest') ) )
-			$wordpress_update_count = 1;
-
-		$update_count = $plugin_update_count + $theme_update_count + $wordpress_update_count;
-		$update_title = array();
-		if ( $wordpress_update_count )
-			$update_title[] = sprintf(__('%d WordPress Update'), $wordpress_update_count);
-		if ( $plugin_update_count )
-			$update_title[] = sprintf(_n('%d Plugin Update', '%d Plugin Updates', $plugin_update_count), $plugin_update_count);
-		if ( $theme_update_count )
-			$update_title[] = sprintf(_n('%d Theme Update', '%d Themes Updates', $theme_update_count), $theme_update_count);
-
-		$update_title = !empty($update_title) ? esc_attr(implode(', ', $update_title)) : '';
-
-		$submenu[ 'index.php' ][10] = array( sprintf( __('Updates %s'), "<span class='update-plugins count-$update_count' title='$update_title'><span class='update-count'>" . number_format_i18n($update_count) . "</span></span>" ), 'install_plugins',  'update-core.php');
-		unset($plugin_update_count, $theme_update_count, $wordpress_update_count, $update_count, $update_title);
-	}
+if ( is_multisite() ) {
+	$submenu[ 'index.php' ][5] = array( __('My Sites'), 'read', 'my-sites.php' );
 }
+
+if ( ! is_multisite() || is_super_admin() ) {
+	$plugin_update_count = $theme_update_count = $wordpress_update_count = 0;
+	$update_plugins = get_site_transient( 'update_plugins' );
+	if ( !empty($update_plugins->response) )
+		$plugin_update_count = count( $update_plugins->response );
+	$update_themes = get_site_transient( 'update_themes' );
+	if ( !empty($update_themes->response) )
+		$theme_update_count = count( $update_themes->response );
+	$update_wordpress = get_core_updates( array('dismissed' => false) );
+	if ( !empty($update_wordpress) && !in_array( $update_wordpress[0]->response, array('development', 'latest') ) )
+		$wordpress_update_count = 1;
+
+	$total_update_count = $plugin_update_count + $theme_update_count + $wordpress_update_count;
+	$update_title = array();
+	if ( $wordpress_update_count )
+		$update_title[] = sprintf(__('%d WordPress Update'), $wordpress_update_count);
+	if ( $plugin_update_count )
+		$update_title[] = sprintf(_n('%d Plugin Update', '%d Plugin Updates', $plugin_update_count), $plugin_update_count);
+	if ( $theme_update_count )
+		$update_title[] = sprintf(_n('%d Theme Update', '%d Themes Updates', $theme_update_count), $theme_update_count);
+
+	$update_title = !empty($update_title) ? esc_attr(implode(', ', $update_title)) : '';
+}
+
+if ( ! is_multisite() ) {
+	$submenu[ 'index.php' ][10] = array( sprintf( __('Updates %s'), "<span class='update-plugins count-$total_update_count' title='$update_title'><span class='update-count'>" . number_format_i18n($total_update_count) . "</span></span>" ), 'update_core',  'update-core.php');
+}
+
+unset($plugin_update_count, $theme_update_count, $wordpress_update_count, $update_themes, $update_plugins, $update_wordpress);
 
 $menu[4] = array( '', 'read', 'separator1', '', 'wp-menu-separator' );
 
@@ -69,11 +68,11 @@ $menu[5] = array( __('Posts'), 'edit_posts', 'edit.php', '', 'open-if-no-js menu
 	$submenu['edit.php'][10]  = array( _x('Add New', 'post'), 'edit_posts', 'post-new.php' );
 
 	$i = 15;
-	foreach ( $wp_taxonomies as $tax ) {
+	foreach ( get_taxonomies( array(), 'objects' ) as $tax ) {
 		if ( ! $tax->show_ui || ! in_array('post', (array) $tax->object_type, true) )
 			continue;
 
-		$submenu['edit.php'][$i++] = array( esc_attr( $tax->labels->name ), $tax->cap->manage_terms, 'edit-tags.php?taxonomy=' . $tax->name );
+		$submenu['edit.php'][$i++] = array( esc_attr( $tax->labels->menu_name ), $tax->cap->manage_terms, 'edit-tags.php?taxonomy=' . $tax->name );
 	}
 	unset($tax);
 
@@ -93,20 +92,26 @@ $menu[20] = array( __('Pages'), 'edit_pages', 'edit.php?post_type=page', '', 'me
 	/* translators: add new page */
 	$submenu['edit.php?post_type=page'][10] = array( _x('Add New', 'page'), 'edit_pages', 'post-new.php?post_type=page' );
 	$i = 15;
-	foreach ( $wp_taxonomies as $tax ) {
+	foreach ( get_taxonomies( array(), 'objects' ) as $tax ) {
 		if ( ! $tax->show_ui || ! in_array('page', (array) $tax->object_type, true) )
 			continue;
 
-		$submenu['edit.php?post_type=page'][$i++] = array( esc_attr( $tax->labels->name ), $tax->cap->manage_terms, 'edit-tags.php?post_type=page&taxonomy=' . $tax->name );
+		$submenu['edit.php?post_type=page'][$i++] = array( esc_attr( $tax->labels->menu_name ), $tax->cap->manage_terms, 'edit-tags.php?taxonomy=' . $tax->name . '&amp;post_type=page' );
 	}
 	unset($tax);
 
+$awaiting_mod = wp_count_comments();
+$awaiting_mod = $awaiting_mod->moderated;
 $menu[25] = array( sprintf( __('Comments %s'), "<span id='awaiting-mod' class='count-$awaiting_mod'><span class='pending-count'>" . number_format_i18n($awaiting_mod) . "</span></span>" ), 'edit_posts', 'edit-comments.php', '', 'menu-top menu-icon-comments', 'menu-comments', 'div' );
+unset($awaiting_mod);
 
 $_wp_last_object_menu = 25; // The index of the last top-level menu in the object menu group
 
-foreach ( (array) get_post_types( array('show_ui' => true, '_builtin' => false) ) as $ptype ) {
+foreach ( (array) get_post_types( array('show_ui' => true, '_builtin' => false, 'show_in_menu' => true ) ) as $ptype ) {
 	$ptype_obj = get_post_type_object( $ptype );
+	// Check if it should be a submenu.
+	if ( $ptype_obj->show_in_menu !== true )
+		continue;
 	$ptype_menu_position = is_int( $ptype_obj->menu_position ) ? $ptype_obj->menu_position : ++$_wp_last_object_menu; // If we're to use $_wp_last_object_menu, increment it first.
 	$ptype_for_id = sanitize_html_class( $ptype );
 	if ( is_string( $ptype_obj->menu_icon ) ) {
@@ -122,19 +127,19 @@ foreach ( (array) get_post_types( array('show_ui' => true, '_builtin' => false) 
 	while ( isset($menu[$ptype_menu_position]) || in_array($ptype_menu_position, $core_menu_positions) )
 		$ptype_menu_position++;
 
-	$menu[$ptype_menu_position] = array( esc_attr( $ptype_obj->labels->name ), $ptype_obj->cap->edit_posts, "edit.php?post_type=$ptype", '', 'menu-top menu-icon-' . $ptype_class, 'menu-posts-' . $ptype_for_id, $menu_icon );
-	$submenu["edit.php?post_type=$ptype"][5]  = array( $ptype_obj->labels->name, $ptype_obj->cap->edit_posts,  "edit.php?post_type=$ptype");
+	$menu[$ptype_menu_position] = array( esc_attr( $ptype_obj->labels->menu_name ), $ptype_obj->cap->edit_posts, "edit.php?post_type=$ptype", '', 'menu-top menu-icon-' . $ptype_class, 'menu-posts-' . $ptype_for_id, $menu_icon );
+	$submenu["edit.php?post_type=$ptype"][5]  = array( $ptype_obj->labels->menu_name, $ptype_obj->cap->edit_posts,  "edit.php?post_type=$ptype");
 	$submenu["edit.php?post_type=$ptype"][10]  = array( $ptype_obj->labels->add_new, $ptype_obj->cap->edit_posts, "post-new.php?post_type=$ptype" );
 
 	$i = 15;
-	foreach ( $wp_taxonomies as $tax ) {
+	foreach ( get_taxonomies( array(), 'objects' ) as $tax ) {
 		if ( ! $tax->show_ui || ! in_array($ptype, (array) $tax->object_type, true) )
 			continue;
 
-		$submenu["edit.php?post_type=$ptype"][$i++] = array( esc_attr( $tax->labels->name ), $tax->cap->manage_terms, "edit-tags.php?taxonomy=$tax->name&amp;post_type=$ptype" );
+		$submenu["edit.php?post_type=$ptype"][$i++] = array( esc_attr( $tax->labels->menu_name ), $tax->cap->manage_terms, "edit-tags.php?taxonomy=$tax->name&amp;post_type=$ptype" );
 	}
 }
-unset($ptype, $ptype_obj);
+unset($ptype, $ptype_obj, $ptype_class, $ptype_for_id, $ptype_menu_position, $menu_icon, $i, $tax);
 
 $menu[59] = array( '', 'read', 'separator2', '', 'wp-menu-separator' );
 
@@ -151,7 +156,8 @@ if ( current_user_can( 'switch_themes') ) {
 }
 
 // Add 'Editor' to the bottom of the Appearence menu.
-add_action('admin_menu', '_add_themes_utility_last', 101);
+if ( ! is_multisite() )
+	add_action('admin_menu', '_add_themes_utility_last', 101);
 function _add_themes_utility_last() {
 	// Must use API on the admin_menu hook, direct modification is only possible on/before the _admin_menu hook
 	add_submenu_page('themes.php', _x('Editor', 'theme editor'), _x('Editor', 'theme editor'), 'edit_themes', 'theme-editor.php');
@@ -163,12 +169,17 @@ if ( !empty($update_plugins->response) )
 	$update_count = count( $update_plugins->response );
 
 $menu_perms = get_site_option('menu_items', array());
-if ( is_super_admin() || ( is_multisite() && isset($menu_perms['plugins']) && $menu_perms['plugins'] ) ) {
-	$menu[65] = array( sprintf( __('Plugins %s'), "<span class='update-plugins count-$update_count'><span class='plugin-count'>" . number_format_i18n($update_count) . "</span></span>" ), 'activate_plugins', 'plugins.php', '', 'menu-top menu-icon-plugins', 'menu-plugins', 'div' );
-		$submenu['plugins.php'][5]  = array( __('Plugins'), 'activate_plugins', 'plugins.php' );
-		/* translators: add new plugin */
-		$submenu['plugins.php'][10] = array(_x('Add New', 'plugin'), 'install_plugins', 'plugin-install.php');
-		$submenu['plugins.php'][15] = array( _x('Editor', 'plugin editor'), 'edit_plugins', 'plugin-editor.php' );
+if ( ! is_multisite() || is_super_admin() || ! empty( $menu_perms['plugins'] ) ) {
+	$count = "<span class='update-plugins count-$update_count'><span class='plugin-count'>" . number_format_i18n($update_count) . "</span></span>";
+	if ( is_multisite() )
+		$count = '';
+	$menu[65] = array( sprintf( __('Plugins %s'), $count ), 'activate_plugins', 'plugins.php', '', 'menu-top menu-icon-plugins', 'menu-plugins', 'div' );
+		if ( ! is_multisite() ) {
+			/* translators: add new plugin */
+			$submenu['plugins.php'][5]  = array( __('Plugins'), 'activate_plugins', 'plugins.php' );
+			$submenu['plugins.php'][10] = array( _x('Add New', 'plugin'), 'install_plugins', 'plugin-install.php' );
+			$submenu['plugins.php'][15] = array( _x('Editor', 'plugin editor'), 'edit_plugins', 'plugin-editor.php' );
+		}
 }
 unset($menu_perms, $update_plugins, $update_count);
 
@@ -180,13 +191,19 @@ else
 if ( current_user_can('list_users') ) {
 	$_wp_real_parent_file['profile.php'] = 'users.php'; // Back-compat for plugins adding submenus to profile.php.
 	$submenu['users.php'][5] = array(__('Users'), 'list_users', 'users.php');
-	$submenu['users.php'][10] = array(_x('Add New', 'user'), 'create_users', 'user-new.php');
+	if ( current_user_can('create_users') )
+		$submenu['users.php'][10] = array(_x('Add New', 'user'), 'create_users', 'user-new.php');
+	else
+		$submenu['users.php'][10] = array(_x('Add New', 'user'), 'promote_users', 'user-new.php');
 
 	$submenu['users.php'][15] = array(__('Your Profile'), 'read', 'profile.php');
 } else {
 	$_wp_real_parent_file['users.php'] = 'profile.php';
 	$submenu['profile.php'][5] = array(__('Your Profile'), 'read', 'profile.php');
-	$submenu['profile.php'][10] = array(__('Add New User'), 'create_users', 'user-new.php');
+	if ( current_user_can('create_users') )
+		$submenu['profile.php'][10] = array(__('Add New User'), 'create_users', 'user-new.php');
+	else
+		$submenu['profile.php'][10] = array(__('Add New User'), 'promote_users', 'user-new.php');
 }
 
 $menu[75] = array( __('Tools'), 'edit_posts', 'tools.php', '', 'menu-top menu-icon-tools', 'menu-tools', 'div' );
@@ -195,7 +212,7 @@ $menu[75] = array( __('Tools'), 'edit_posts', 'tools.php', '', 'menu-top menu-ic
 	$submenu['tools.php'][15] = array( __('Export'), 'import', 'export.php' );
 	if ( is_multisite() && !is_main_site() )
 		$submenu['tools.php'][25] = array( __('Delete Site'), 'manage_options', 'ms-delete-site.php' );
-	if ( ( ! is_multisite() || defined( 'MULTISITE' ) ) && defined('WP_ALLOW_MULTISITE') && WP_ALLOW_MULTISITE && is_super_admin() )
+	if ( ! is_multisite() && defined('WP_ALLOW_MULTISITE') && WP_ALLOW_MULTISITE )
 		$submenu['tools.php'][50] = array(__('Network'), 'manage_options', 'network.php');
 
 $menu[80] = array( __('Settings'), 'manage_options', 'options-general.php', '', 'menu-top menu-icon-settings', 'menu-settings', 'div' );
@@ -216,7 +233,8 @@ $_wp_real_parent_file['post.php'] = 'edit.php';
 $_wp_real_parent_file['post-new.php'] = 'edit.php';
 $_wp_real_parent_file['edit-pages.php'] = 'edit.php?post_type=page';
 $_wp_real_parent_file['page-new.php'] = 'edit.php?post_type=page';
-$_wp_real_parent_file['wpmu-admin.php'] = 'ms-admin.php';
+$_wp_real_parent_file['wpmu-admin.php'] = 'tools.php';
+$_wp_real_parent_file['ms-admin.php'] = 'tools.php';
 
 // ensure we're backwards compatible
 $compat = array(
@@ -232,6 +250,6 @@ $compat = array(
 	'themes' => 'appearance',
 	);
 
-require(ABSPATH . 'wp-admin/includes/menu.php');
+require_once(ABSPATH . 'wp-admin/includes/menu.php');
 
 ?>

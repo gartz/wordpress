@@ -7,13 +7,16 @@
  * @since 3.0.0
  */
 
+/** Load WordPress Administration Bootstrap */
 require_once( './admin.php' );
 
 if ( ! is_multisite() )
 	wp_die( __( 'Multisite support is not enabled.' ) );
 
-if ( empty( $_GET['action'] ) )
+if ( empty( $_GET['action'] ) ) {
 	wp_redirect( admin_url( 'index.php' ) );
+	exit;
+}
 
 function confirm_delete_users( $users ) {
 	$current_user = wp_get_current_user();
@@ -35,6 +38,9 @@ function confirm_delete_users( $users ) {
 		if ( $val != '' && $val != '0' ) {
 			$delete_user = new WP_User( $val );
 
+			if ( ! current_user_can( 'delete_user', $delete_user->ID ) )
+				wp_die( sprintf( __( 'Warning! User %s cannot be deleted.' ), $delete_user->user_login ) );
+
 			if ( in_array( $delete_user->user_login, $site_admins ) )
 				wp_die( sprintf( __( 'Warning! User cannot be deleted. The user %s is a network admnistrator.' ), $delete_user->user_login ) );
 
@@ -46,14 +52,14 @@ function confirm_delete_users( $users ) {
 				<br /><fieldset><p><legend><?php printf( __( "What should be done with posts and links owned by <em>%s</em>?" ), $delete_user->user_login ); ?></legend></p>
 				<?php
 				foreach ( (array) $blogs as $key => $details ) {
-					$blog_users = get_users_of_blog( $details->userblog_id );
+					$blog_users = get_users( array( 'blog_id' => $details->userblog_id ) );
 					if ( is_array( $blog_users ) && !empty( $blog_users ) ) {
 						$user_site = "<a href='" . esc_url( get_home_url( $details->userblog_id ) ) . "'>{$details->blogname}</a>";
 						$user_dropdown = "<select name='blog[$val][{$key}]'>";
 						$user_list = '';
 						foreach ( $blog_users as $user ) {
-							if ( $user->user_id != $val && !in_array( $user->user_id, $allusers ) )
-								$user_list .= "<option value='{$user->user_id}'>{$user->user_login}</option>";
+							if ( ! in_array( $user->ID, $allusers ) )
+								$user_list .= "<option value='{$user->ID}'>{$user->user_login}</option>";
 						}
 						if ( '' == $user_list )
 							$user_list = $admin_out;
@@ -74,8 +80,9 @@ function confirm_delete_users( $users ) {
 			}
 		}
 	}
+
+	submit_button( __('Confirm Deletion'), 'delete' );
 	?>
-	<p class="submit"><input type="submit" class="button-secondary delete" value="<?php esc_attr_e( 'Confirm Deletion' ); ?>" /></p>
 	</form>
     <?php
 	return true;
@@ -95,7 +102,7 @@ switch ( $_GET['action'] ) {
 			wp_die( __( 'You do not have permission to access this page.' ) );
 
 		if ( empty( $_POST ) )
-			wp_die( sprintf( __( 'You probably need to go back to the <a href="%s">options page</a>.', esc_url( admin_url( 'settings.php' ) ) ) ) );
+			wp_die( sprintf( __( 'You probably need to go back to the <a href="%s">options page</a>.' ), esc_url( admin_url( 'settings.php' ) ) ) );
 
 		if ( isset($_POST['WPLANG']) && ( '' === $_POST['WPLANG'] || in_array( $_POST['WPLANG'], get_available_languages() ) ) )
 			update_site_option( 'WPLANG', $_POST['WPLANG'] );
@@ -137,53 +144,8 @@ switch ( $_GET['action'] ) {
 		} else {
 			update_site_option( 'banned_email_domains', '' );
 		}
-		update_site_option( 'default_user_role', $_POST['default_user_role'] );
-		if ( trim( $_POST['dashboard_blog_orig'] ) == '' )
-			$_POST['dashboard_blog_orig'] = $current_site->blog_id;
-		if ( trim( $_POST['dashboard_blog'] ) == '' ) {
-			$_POST['dashboard_blog'] = $current_site->blog_id;
-			$dashboard_blog_id = $current_site->blog_id;
-		} elseif ( ! preg_match( '/(--|\.)/', $_POST['dashboard_blog'] ) && preg_match( '|^([a-zA-Z0-9-\.])+$|', $_POST['dashboard_blog'] ) ) {
-			$dashboard_blog = $_POST['dashboard_blog'];
-			$blog_details = get_blog_details( $dashboard_blog );
-			if ( false === $blog_details ) {
-				if ( is_numeric( $dashboard_blog ) )
-					wp_die( __( 'A dashboard site referenced by ID must already exist' ) );
-				if ( is_subdomain_install() ) {
-					$domain = $dashboard_blog . '.' . $current_site->domain;
-					$path = $current_site->path;
-				} else {
-					$domain = $current_site->domain;
-					$path = trailingslashit( $current_site->path . $dashboard_blog );
-				}
-				$wpdb->hide_errors();
-				$dashboard_blog_id = wpmu_create_blog( $domain, $path, __( 'My Dashboard' ), $current_user->id , array( 'public' => 0 ), $current_site->id );
-				$wpdb->show_errors();
-			} else {
-				$dashboard_blog_id = $blog_details->blog_id;
-			}
-		}
-		if ( is_wp_error( $dashboard_blog_id ) )
-			wp_die( __( 'Problem creating dashboard site: ' ) . $dashboard_blog_id->get_error_message() );
-		if ( $_POST['dashboard_blog_orig'] != $_POST['dashboard_blog'] ) {
-			$users = get_users_of_blog( get_site_option( 'dashboard_blog' ) );
-			$move_users = array();
-			foreach ( (array)$users as $user ) {
-				$user_meta_value = unserialize( $user->meta_value );
-				if ( is_array( $user_meta_value ) && array_pop( $var_by_ref = array_keys( $user_meta_value ) ) == 'subscriber' )
-					$move_users[] = $user->user_id;
-			}
-			if ( false == empty( $move_users ) ) {
-				foreach ( (array)$move_users as $user_id ) {
-					remove_user_from_blog($user_id, get_site_option( 'dashboard_blog' ) );
-					add_user_to_blog( $dashboard_blog_id, $user_id, get_site_option( 'default_user_role', 'subscriber' ) );
-					update_user_meta( $user_id, 'primary_blog', $dashboard_blog_id );
-				}
-			}
-		}
-		update_site_option( 'dashboard_blog', $dashboard_blog_id );
 
-		$options = array( 'registrationnotification', 'registration', 'add_new_users', 'menu_items', 'mu_media_buttons', 'upload_space_check_disabled', 'blog_upload_space', 'upload_filetypes', 'site_name', 'first_post', 'first_page', 'first_comment', 'first_comment_url', 'first_comment_author', 'welcome_email', 'welcome_user_email', 'fileupload_maxk', 'admin_notice_feed', 'global_terms_enabled' );
+		$options = array( 'registrationnotification', 'registration', 'add_new_users', 'menu_items', 'mu_media_buttons', 'upload_space_check_disabled', 'blog_upload_space', 'upload_filetypes', 'site_name', 'first_post', 'first_page', 'first_comment', 'first_comment_url', 'first_comment_author', 'welcome_email', 'welcome_user_email', 'fileupload_maxk', 'global_terms_enabled' );
 		$checked_options = array( 'mu_media_buttons' => array(), 'menu_items' => array(), 'registrationnotification' => 'no', 'upload_space_check_disabled' => 1, 'add_new_users' => 0 );
 		foreach ( $checked_options as $option_name => $option_unchecked_value ) {
 			if ( ! isset( $_POST[$option_name] ) )
@@ -199,204 +161,32 @@ switch ( $_GET['action'] ) {
 		// Update more options here
 		do_action( 'update_wpmu_options' );
 
-		wp_redirect( add_query_arg( 'updated', 'true', admin_url( 'settings.php' ) ) );
+		wp_redirect( add_query_arg( 'updated', 'true', network_admin_url( 'settings.php' ) ) );
 		exit();
-	break;
-	case 'addblog':
-		check_admin_referer( 'add-blog', '_wpnonce_add-blog' );
-
-		if ( ! current_user_can( 'manage_sites' ) )
-			wp_die( __( 'You do not have permission to access this page.' ) );
-
-		if ( is_array( $_POST['blog'] ) == false )
-			wp_die(  __( 'Can&#8217;t create an empty site.' ) );
-		$blog = $_POST['blog'];
-		$domain = '';
-		if ( ! preg_match( '/(--)/', $blog['domain'] ) && preg_match( '|^([a-zA-Z0-9-])+$|', $blog['domain'] ) )
-			$domain = strtolower( $blog['domain'] );
-
-		// If not a subdomain install, make sure the domain isn't a reserved word
-		if ( ! is_subdomain_install() ) {
-			$subdirectory_reserved_names = apply_filters( 'subdirectory_reserved_names', array( 'page', 'comments', 'blog', 'files', 'feed' ) );
-			if ( in_array( $domain, $subdirectory_reserved_names ) )
-				wp_die( sprintf( __('The following words are reserved for use by WordPress functions and cannot be used as blog names: <code>%s</code>' ), implode( '</code>, <code>', $subdirectory_reserved_names ) ) );
-		}
-
-		$email = sanitize_email( $blog['email'] );
-		$title = $blog['title'];
-
-		if ( empty( $domain ) )
-			wp_die( __( 'Missing or invalid site address.' ) );
-		if ( empty( $email ) )
-			wp_die( __( 'Missing email address.' ) );
-		if ( !is_email( $email ) )
-			wp_die( __( 'Invalid email address.' ) );
-
-		if ( is_subdomain_install() ) {
-			$newdomain = $domain . '.' . preg_replace( '|^www\.|', '', $current_site->domain );
-			$path = $base;
-		} else {
-			$newdomain = $current_site->domain;
-			$path = $base . $domain . '/';
-		}
-
-		$password = 'N/A';
-		$user_id = email_exists($email);
-		if ( !$user_id ) { // Create a new user with a random password
-			$password = wp_generate_password();
-			$user_id = wpmu_create_user( $domain, $password, $email );
-			if ( false == $user_id )
-				wp_die( __( 'There was an error creating the user.' ) );
-			else
-				wp_new_user_notification( $user_id, $password );
-		}
-
-		$wpdb->hide_errors();
-		$id = wpmu_create_blog( $newdomain, $path, $title, $user_id , array( 'public' => 1 ), $current_site->id );
-		$wpdb->show_errors();
-		if ( !is_wp_error( $id ) ) {
-			$dashboard_blog = get_dashboard_blog();
-			if ( !is_super_admin( $user_id ) && get_user_option( 'primary_blog', $user_id ) == $dashboard_blog->blog_id )
-				update_user_option( $user_id, 'primary_blog', $id, true );
-			$content_mail = sprintf( __( "New site created by %1s\n\nAddress: http://%2s\nName: %3s"), $current_user->user_login , $newdomain . $path, stripslashes( $title ) );
-			wp_mail( get_site_option('admin_email'),  sprintf( __( '[%s] New Site Created' ), $current_site->site_name ), $content_mail, 'From: "Site Admin" <' . get_site_option( 'admin_email' ) . '>' );
-			wpmu_welcome_notification( $id, $user_id, $password, $title, array( 'public' => 1 ) );
-			wp_redirect( add_query_arg( array( 'updated' => 'true', 'action' => 'add-blog' ), wp_get_referer() ) );
-			exit();
-		} else {
-			wp_die( $id->get_error_message() );
-		}
 	break;
 
 	case 'updateblog':
-		check_admin_referer( 'editblog' );
-		if ( ! current_user_can( 'manage_sites' ) )
-			wp_die( __( 'You do not have permission to access this page.' ) );
-
-		if ( empty( $_POST ) )
-			wp_die( sprintf( __( 'You probably need to go back to the <a href="%s">sites page</a>', esc_url( network_admin_url( 'sites.php' ) ) ) ) );
-
-		switch_to_blog( $id );
-
-		// themes
-		$allowedthemes = array();
-		if ( isset($_POST['theme']) && is_array( $_POST['theme'] ) ) {
-			foreach ( $_POST['theme'] as $theme => $val ) {
-				if ( 'on' == $val )
-					$allowedthemes[$theme] = true;
-			}
-		}
-		update_option( 'allowedthemes',  $allowedthemes );
-
-		// options
-		if ( is_array( $_POST['option'] ) ) {
-			$c = 1;
-			$count = count( $_POST['option'] );
-			$skip_options = array( 'allowedthemes' ); // Don't update these options since they are handled elsewhere in the form.
-			foreach ( (array) $_POST['option'] as $key => $val ) {
-				if ( $key === 0 || is_array( $val ) || in_array($key, $skip_options) )
-					continue; // Avoids "0 is a protected WP option and may not be modified" error when edit blog options
-				if ( $c == $count )
-					update_option( $key, stripslashes( $val ) );
-				else
-					update_option( $key, stripslashes( $val ), false ); // no need to refresh blog details yet
-				$c++;
-			}
-		}
-
-		// home and siteurl
-		if ( isset( $_POST['update_home_url'] ) && $_POST['update_home_url'] == 'update' ) {
-			$blog_address = get_blogaddress_by_domain( $_POST['blog']['domain'], $_POST['blog']['path'] );
-			if ( get_option( 'siteurl' ) !=  $blog_address )
-				update_option( 'siteurl', $blog_address );
-
-			if ( get_option( 'home' ) != $blog_address )
-				update_option( 'home', $blog_address );
-		}
-
-		// rewrite rules can't be flushed during switch to blog
-		delete_option( 'rewrite_rules' );
-
-		// update blogs table
-		$blog_data = stripslashes_deep( $_POST['blog'] );
-		update_blog_details( $id, $blog_data );
-
-		// get blog prefix
-		$blog_prefix = $wpdb->get_blog_prefix( $id );
-
-		// user roles
-		if ( isset( $_POST['role'] ) && is_array( $_POST['role'] ) == true ) {
-			$newroles = $_POST['role'];
-
-			reset( $newroles );
-			foreach ( (array) $newroles as $userid => $role ) {
-				$user = new WP_User( $userid );
-				if ( empty( $user->ID ) )
-					continue;
-				$user->for_blog( $id );
-				$user->set_role( $role );
-			}
-		}
-
-		// remove user
-		if ( isset( $_POST['blogusers'] ) && is_array( $_POST['blogusers'] ) ) {
-			reset( $_POST['blogusers'] );
-			foreach ( (array) $_POST['blogusers'] as $key => $val )
-				remove_user_from_blog( $key, $id );
-		}
-
-		// change password
-		if ( isset( $_POST['user_password'] ) && is_array( $_POST['user_password'] ) ) {
-			reset( $_POST['user_password'] );
-			$newroles = $_POST['role'];
-			foreach ( (array) $_POST['user_password'] as $userid => $pass ) {
-				unset( $_POST['role'] );
-				$_POST['role'] = $newroles[ $userid ];
-				if ( $pass != '' ) {
-					$cap = $wpdb->get_var( $wpdb->prepare( "SELECT meta_value FROM {$wpdb->usermeta} WHERE user_id = %d AND meta_key = '{$blog_prefix}capabilities' AND meta_value = 'a:0:{}'", $userid ) );
-					$userdata = get_userdata($userid);
-					$_POST['pass1'] = $_POST['pass2'] = $pass;
-					$_POST['email'] = $userdata->user_email;
-					$_POST['rich_editing'] = $userdata->rich_editing;
-					edit_user( $userid );
-					if ( $cap == null )
-						$wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->usermeta} WHERE user_id = %d AND meta_key = '{$blog_prefix}capabilities' AND meta_value = 'a:0:{}'", $userid ) );
-				}
-			}
-			unset( $_POST['role'] );
-			$_POST['role'] = $newroles;
-		}
-
-		// add user
-		if ( !empty( $_POST['newuser'] ) ) {
-			$newuser = $_POST['newuser'];
-			$userid = $wpdb->get_var( $wpdb->prepare( "SELECT ID FROM " . $wpdb->users . " WHERE user_login = %s", $newuser ) );
-			if ( $userid ) {
-				$user = $wpdb->get_var( "SELECT user_id FROM " . $wpdb->usermeta . " WHERE user_id='$userid' AND meta_key='{$blog_prefix}capabilities'" );
-				if ( $user == false )
-					add_user_to_blog( $id, $userid, $_POST['new_role'] );
-			}
-		}
-		do_action( 'wpmu_update_blog_options' );
-		restore_current_blog();
-		wp_redirect( add_query_arg( array( 'updated' => 'true', 'action' => 'editblog', 'id' => $id ), wp_get_referer() ) );
+		// No longer used.
 	break;
 
 	case 'deleteblog':
 		check_admin_referer('deleteblog');
-		if ( ! current_user_can( 'manage_sites' ) )
+		if ( ! ( current_user_can( 'manage_sites' ) && current_user_can( 'delete_sites' ) ) )
 			wp_die( __( 'You do not have permission to access this page.' ) );
 
-		if ( $id != '0' && $id != $current_site->blog_id )
+		if ( $id != '0' && $id != $current_site->blog_id && current_user_can( 'delete_site', $id ) ) {
 			wpmu_delete_blog( $id, true );
+			wp_redirect( add_query_arg( array( 'updated' => 'true', 'action' => 'delete' ), wp_get_referer() ) );
+		} else {
+			wp_redirect( add_query_arg( array( 'updated' => 'true', 'action' => 'not_deleted' ), wp_get_referer() ) );
+		}
 
-		wp_redirect( add_query_arg( array( 'updated' => 'true', 'action' => 'delete' ), wp_get_referer() ) );
 		exit();
 	break;
 
 	case 'allblogs':
-		if ( isset( $_POST['doaction']) || isset($_POST['doaction2'] ) ) {
-			check_admin_referer( 'bulk-ms-sites', '_wpnonce_bulk-ms-sites' );
+		if ( ( isset( $_POST['action'] ) || isset( $_POST['action2'] ) ) && isset( $_POST['allblogs'] ) ) {
+			check_admin_referer( 'bulk-sites' );
 
 			if ( ! current_user_can( 'manage_sites' ) )
 				wp_die( __( 'You do not have permission to access this page.' ) );
@@ -404,24 +194,27 @@ switch ( $_GET['action'] ) {
 			if ( $_GET['action'] != -1 || $_POST['action2'] != -1 )
 				$doaction = $_POST['action'] != -1 ? $_POST['action'] : $_POST['action2'];
 
+			$blogfunction = '';
 
 			foreach ( (array) $_POST['allblogs'] as $key => $val ) {
 				if ( $val != '0' && $val != $current_site->blog_id ) {
 					switch ( $doaction ) {
 						case 'delete':
+							if ( ! current_user_can( 'delete_site', $val ) )
+								wp_die( __( 'You are not allowed to delete the site.' ) );
 							$blogfunction = 'all_delete';
 							wpmu_delete_blog( $val, true );
 						break;
 
 						case 'spam':
 							$blogfunction = 'all_spam';
-							update_blog_status( $val, 'spam', '1', 0 );
+							update_blog_status( $val, 'spam', '1' );
 							set_time_limit( 60 );
 						break;
 
 						case 'notspam':
 							$blogfunction = 'all_notspam';
-							update_blog_status( $val, 'spam', '0', 0 );
+							update_blog_status( $val, 'spam', '0' );
 							set_time_limit( 60 );
 						break;
 					}
@@ -431,10 +224,10 @@ switch ( $_GET['action'] ) {
 			}
 
 			wp_redirect( add_query_arg( array( 'updated' => 'true', 'action' => $blogfunction ), wp_get_referer() ) );
-			exit();
 		} else {
 			wp_redirect( network_admin_url( 'sites.php' ) );
 		}
+		exit();
 	break;
 
 	case 'archiveblog':
@@ -443,7 +236,6 @@ switch ( $_GET['action'] ) {
 			wp_die( __( 'You do not have permission to access this page.' ) );
 
 		update_blog_status( $id, 'archived', '1' );
-		do_action( 'archive_blog', $id );
 		wp_redirect( add_query_arg( array( 'updated' => 'true', 'action' => 'archive' ), wp_get_referer() ) );
 		exit();
 	break;
@@ -453,7 +245,6 @@ switch ( $_GET['action'] ) {
 		if ( ! current_user_can( 'manage_sites' ) )
 			wp_die( __( 'You do not have permission to access this page.' ) );
 
-		do_action( 'unarchive_blog', $id );
 		update_blog_status( $id, 'archived', '0' );
 		wp_redirect( add_query_arg( array( 'updated' => 'true', 'action' => 'unarchive' ), wp_get_referer() ) );
 		exit();
@@ -501,27 +292,29 @@ switch ( $_GET['action'] ) {
 		exit();
 	break;
 
-	// Themes
-    case 'updatethemes':
-	if ( ! current_user_can( 'manage_network_themes' ) )
-		wp_die( __( 'You do not have permission to access this page.' ) );
+	case 'unmatureblog':
+		check_admin_referer( 'unmatureblog' );
+		if ( ! current_user_can( 'manage_sites' ) )
+			wp_die( __( 'You do not have permission to access this page.' ) );
 
-    	if ( is_array( $_POST['theme'] ) ) {
-			$themes = get_themes();
-			reset( $themes );
-			$allowed_themes = array();
-			foreach ( (array) $themes as $key => $theme ) {
-				if ( $_POST['theme'][ esc_html( $theme['Stylesheet'] ) ] == 'enabled' )
-					$allowed_themes[ esc_html( $theme['Stylesheet'] ) ] = true;
-			}
-			update_site_option( 'allowedthemes', $allowed_themes );
-		}
-		wp_redirect( add_query_arg( array( 'updated' => 'true', 'action' => 'themes' ),  wp_get_referer() ) );
+		update_blog_status( $id, 'mature', '0' );
+		wp_redirect( add_query_arg( array( 'updated' => 'true', 'action' => 'unmature' ), wp_get_referer() ) );
+		exit();
+	break;
+
+	case 'matureblog':
+		check_admin_referer( 'matureblog' );
+		if ( ! current_user_can( 'manage_sites' ) )
+			wp_die( __( 'You do not have permission to access this page.' ) );
+
+		update_blog_status( $id, 'mature', '1' );
+		wp_redirect( add_query_arg( array( 'updated' => 'true', 'action' => 'mature' ), wp_get_referer() ) );
 		exit();
 	break;
 
 	// Common
 	case 'confirm':
+		check_admin_referer( 'confirm' );
 		if ( !headers_sent() ) {
 			nocache_headers();
 			header( 'Content-Type: text/html; charset=utf-8' );
@@ -548,11 +341,12 @@ switch ( $_GET['action'] ) {
 					<input type="hidden" name="_wp_http_referer" value="<?php echo esc_attr( wp_get_referer() ); ?>" />
 					<?php wp_nonce_field( $_GET['action2'], '_wpnonce', false ); ?>
 					<p><?php echo esc_html( stripslashes( $_GET['msg'] ) ); ?></p>
-					<p class="submit"><input class="button" type="submit" value="<?php _e( 'Confirm' ); ?>" /></p>
+					<?php submit_button( __('Confirm'), 'button' ); ?>
 				</form>
 			</body>
 		</html>
 		<?php
+		exit();
 	break;
 
 	// Users
@@ -571,26 +365,30 @@ switch ( $_GET['action'] ) {
 			confirm_delete_users( $_POST['allusers'] );
 			echo '</div>';
             require_once( '../admin-footer.php' );
-            exit();
-		} else {
+  		} else {
 			wp_redirect( network_admin_url( 'users.php' ) );
 		}
+		exit();
 	break;
 
 	case 'allusers':
-		if ( ! current_user_can( 'manage_network_users' ) )
+		if ( !current_user_can( 'manage_network_users' ) )
 			wp_die( __( 'You do not have permission to access this page.' ) );
 
-		if ( isset( $_POST['doaction']) || isset($_POST['doaction2'] ) ) {
-			check_admin_referer( 'bulk-ms-users', '_wpnonce_bulk-ms-users' );
+		if ( ( isset( $_POST['action']) || isset($_POST['action2'] ) ) && isset( $_POST['allusers'] ) ) {
+			check_admin_referer( 'bulk-users-network' );
 
 			if ( $_GET['action'] != -1 || $_POST['action2'] != -1 )
 				$doaction = $_POST['action'] != -1 ? $_POST['action'] : $_POST['action2'];
+
+			$userfunction = '';
 
 			foreach ( (array) $_POST['allusers'] as $key => $val ) {
 				if ( !empty( $val ) ) {
 					switch ( $doaction ) {
 						case 'delete':
+							if ( ! current_user_can( 'delete_users' ) )
+								wp_die( __( 'You do not have permission to access this page.' ) );
 							$title = __( 'Users' );
 							$parent_file = 'users.php';
 							require_once( '../admin-header.php' );
@@ -612,7 +410,7 @@ switch ( $_GET['action'] ) {
 								if ( $details->userblog_id != $current_site->blog_id ) // main blog not a spam !
 									update_blog_status( $details->userblog_id, 'spam', '1' );
 							}
-							update_user_status( $val, 'spam', '1', 1 );
+							update_user_status( $val, 'spam', '1' );
 						break;
 
 						case 'notspam':
@@ -621,27 +419,34 @@ switch ( $_GET['action'] ) {
 							foreach ( (array) $blogs as $key => $details )
 								update_blog_status( $details->userblog_id, 'spam', '0' );
 
-							update_user_status( $val, 'spam', '0', 1 );
+							update_user_status( $val, 'spam', '0' );
 						break;
 					}
 				}
 			}
 
 			wp_redirect( add_query_arg( array( 'updated' => 'true', 'action' => $userfunction ), wp_get_referer() ) );
-			exit();
 		} else {
-			wp_redirect( network_admin_url( 'users.php' ) );
+			$location = network_admin_url( 'users.php' );
+
+			if ( ! empty( $_REQUEST['paged'] ) )
+				$location = add_query_arg( 'paged', (int) $_REQUEST['paged'], $location );
+			wp_redirect( $location );
 		}
+		exit();
 	break;
 
 	case 'dodelete':
 		check_admin_referer( 'ms-users-delete' );
-		if ( ! current_user_can( 'manage_network_users' ) )
+		if ( ! ( current_user_can( 'manage_network_users' ) && current_user_can( 'delete_users' ) ) )
 			wp_die( __( 'You do not have permission to access this page.' ) );
 
 		if ( ! empty( $_POST['blog'] ) && is_array( $_POST['blog'] ) ) {
 			foreach ( $_POST['blog'] as $id => $users ) {
 				foreach ( $users as $blogid => $user_id ) {
+					if ( ! current_user_can( 'delete_user', $id ) )
+						continue;
+
 					if ( ! empty( $_POST['delete'] ) && 'reassign' == $_POST['delete'][$blogid][$id] )
 						remove_user_from_blog( $id, $blogid, $user_id );
 					else
@@ -652,6 +457,8 @@ switch ( $_GET['action'] ) {
 		$i = 0;
 		if ( is_array( $_POST['user'] ) && ! empty( $_POST['user'] ) )
 			foreach( $_POST['user'] as $id ) {
+				if ( ! current_user_can( 'delete_user', $id ) )
+					continue;
 				wpmu_delete_user( $id );
 				$i++;
 			}
@@ -662,42 +469,14 @@ switch ( $_GET['action'] ) {
 			$deletefunction = 'all_delete';
 
 		wp_redirect( add_query_arg( array( 'updated' => 'true', 'action' => $deletefunction ), network_admin_url( 'users.php' ) ) );
-	break;
-
-	case 'adduser':
-		check_admin_referer( 'add-user', '_wpnonce_add-user' );
-		if ( ! current_user_can( 'manage_network_users' ) )
-			wp_die( __( 'You do not have permission to access this page.' ) );
-
-		if ( is_array( $_POST['user'] ) == false )
-			wp_die( __( 'Cannot create an empty user.' ) );
-		$user = $_POST['user'];
-		if ( empty($user['username']) && empty($user['email']) )
-			wp_die( __( 'Missing username and email.' ) );
-		elseif ( empty($user['username']) )
-			wp_die( __( 'Missing username.' ) );
-		elseif ( empty($user['email']) )
-			wp_die( __( 'Missing email.' ) );
-
-		$password = wp_generate_password();
-		$user_id = wpmu_create_user( esc_html( strtolower( $user['username'] ) ), $password, esc_html( $user['email'] ) );
-
-		if ( false == $user_id )
- 			wp_die( __( 'Duplicated username or email address.' ) );
-		else
-			wp_new_user_notification( $user_id, $password );
-
-		if ( get_site_option( 'dashboard_blog' ) == false )
-			add_user_to_blog( $current_site->blog_id, $user_id, get_site_option( 'default_user_role', 'subscriber' ) );
-		else
-			add_user_to_blog( get_site_option( 'dashboard_blog' ), $user_id, get_site_option( 'default_user_role', 'subscriber' ) );
-
-		wp_redirect( add_query_arg( array( 'updated' => 'true', 'action' => 'add' ), wp_get_referer() ) );
 		exit();
 	break;
 
 	default:
+		// Let plugins use us as a post handler easily
+		do_action( 'network_admin_edit_' . $_GET['action'] );
 		wp_redirect( network_admin_url( 'index.php' ) );
+		exit();
 	break;
 }
 ?>

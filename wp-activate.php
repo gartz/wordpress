@@ -7,11 +7,9 @@ require( dirname(__FILE__) . '/wp-load.php' );
 require( './wp-blog-header.php' );
 
 if ( !is_multisite() ) {
-	wp_redirect( get_option( 'siteurl' ) . "/wp-login.php?action=register" );
+	wp_redirect( site_url( '/wp-login.php?action=register' ) );
 	die();
 }
-
-require_once( ABSPATH . WPINC . '/registration.php');
 
 if ( is_object( $wp_object_cache ) )
 	$wp_object_cache->cache_enabled = false;
@@ -30,7 +28,7 @@ function wpmu_activate_stylesheet() {
 		#submit, #key { width: 90%; font-size: 24px; }
 		#language { margin-top: .5em; }
 		.error { background: #f66; }
-		span.h3 { padding:0 8px; font-size:1.3em; font-family:'Trebuchet MS','Lucida Grande',Verdana,Arial,Sans-Serif; font-weight:700; color:#333333; }
+		span.h3 { padding: 0 8px; font-size: 1.3em; font-family: "Lucida Grande", Verdana, Arial, "Bitstream Vera Sans", sans-serif; font-weight: bold; color: #333; }
 	</style>
 	<?php
 }
