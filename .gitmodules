@@ -1,0 +1,3 @@
+[submodule "wp-content/themes/canvas"]
+	path = wp-content/themes/canvas
+	url = git@github.com:tylerdigital/canvas.git
