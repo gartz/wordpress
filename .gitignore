@@ -3,3 +3,4 @@ wp-config-environment.php
 wp-content/uploads/
 .ftpssh_settings
 .DS_Store
+.project
