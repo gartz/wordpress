@@ -317,10 +317,6 @@ function is_serialized_string( $data ) {
  * @return mixed Value set for the option.
  */
 function get_option( $option, $default = false ) {
-	if( function_exists( 'td_get_environment_option' ) ) {
-		$environment_option = td_get_environment_option( $option );
-		if( $environment_option !== false ) return $environment_option;
-	}
 	global $wpdb;
 
 	// Allow plugins to short-circuit options.

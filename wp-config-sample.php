@@ -13,7 +13,6 @@
  *
  * @package WordPress
  */
-@include_once(dirname(__FILE__) . '/wp-config-environment.php');
 
 // ** MySQL settings - You can get this info from your web host ** //
 /** The name of the database for WordPress */
